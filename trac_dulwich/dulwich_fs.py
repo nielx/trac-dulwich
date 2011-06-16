@@ -37,23 +37,8 @@ class DulwichRepository(Repository):
         self.dulwichrepo = None
     
     def get_changeset(self, rev):
-        return DulwichChangeset(self, rev)
-    
-    def get_youngest_rev(self):
-        return self.dulwichrepo.head()
-    
-    def previous_rev(self, rev, path=''):
-        if path != None:
-            raise NotImplementedError
-        try:
-            return self.dulwichrepo.revision_history(rev)[1].id
-        except KeyError:
-            return None
-    
-    def next_rev(self, rev, path=""):
-        # TODO: implement (needs database though)
-        return None
-    
+        return DulwichChangeset(self, rev)    
+
     def get_node(self, path, rev=None):
         if not rev:
             rev = self.dulwichrepo.head()
@@ -61,9 +46,30 @@ class DulwichRepository(Repository):
     
     def get_oldest_rev(self):
         raise NotImplementedError
-    
+
+    def get_youngest_rev(self):
+        return self.dulwichrepo.head()
+
+    def previous_rev(self, rev, path=''):
+        if path != None:
+            raise NotImplementedError
+        try:
+            return self.dulwichrepo.revision_history(rev)[1].id
+        except KeyError:
+            return None
+
+    def next_rev(self, rev, path=""):
+        # TODO: implement (needs database though)
+        return None
+           
     def normalize_path(self, path):
         return path and path.strip('/') or '/'
+    
+    def rev_older_than(self, rev1, rev2):
+        raise NotImplementedError
+        
+    def get_path_history(self, path, rev=None, limit=None):
+        raise NotImplementedError
     
     def normalize_rev(self, rev):
         if not rev:
@@ -72,6 +78,7 @@ class DulwichRepository(Repository):
         if not isinstance(test, Commit):
             raise NoSuchChangeset(rev)
         return rev 
+
     
     def short_rev(self, rev):
         #NOTE: This should actually verify whether the names clash. At the other hand
@@ -81,6 +88,10 @@ class DulwichRepository(Repository):
     
     def display_rev(self, rev):
         return self.short_rev(rev)
+        
+    def get_changes(self, old_path, old_rev, new_path, new_rev,
+                        ignore_ancestry=1):
+        raise NotImplementedError
 
     
 class DulwichChangeset(Changeset):
