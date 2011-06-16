@@ -134,6 +134,9 @@ class DulwichNode(Node):
                 kind = Node.FILE
             else:
                 raise TracError("Weird kind of Dulwich object for " + path)
+        
+        rev = self._get_last_change(rev, path, self.dulwichobject.id)        
+        
         Node.__init__(self, repos, path, rev, kind)
     
     def get_content(self):
@@ -162,3 +165,34 @@ class DulwichNode(Node):
         if self.isdir:
             return None
         return self.dulwichobject.raw_length()
+        
+    def _get_last_change(self, rev, path, refsha):
+        # Find the last change for the given path since a specified rev
+        elements = path.strip('/').split('/')
+        commits = self.dulwichrepo.revision_history(rev)
+        
+        for commit in commits:
+            currentobject = self.dulwichrepo.tree(commit.tree)
+
+            found = False
+            for element in elements:
+                # iterate through the tree
+                found = False
+                for name, mode, sha in currentobject.items():
+                    if name == element:
+                        currentsha = sha
+                        currentobject = self.dulwichrepo[sha]
+                        found = True
+                        break
+                if not found:
+                    # This means that the current revision of the object is the right one.
+                    return rev
+                    
+            # at this point we either found the object with the same name or we didn't
+            if found and currentsha == refsha:
+                rev = commit.id
+            elif found:
+                return rev
+        
+        raise TracError("Unknown error in TracDulwich (_get_last_change)")
+        
