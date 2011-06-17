@@ -9,6 +9,18 @@ from dulwich.repo import Repo
 from datetime import datetime
 from StringIO import StringIO
 
+# Utils from TracGit
+
+def _last_iterable(iterable):
+    "helper for detecting last iteration in for-loop"
+    i = iter(iterable)
+    v = i.next()
+    for nextv in i:
+        yield False, v
+        v = nextv
+    yield True, v
+
+
 class DulwichConnector(Component):
     implements(IRepositoryConnector)
     
@@ -52,7 +64,10 @@ class DulwichRepository(Repository):
 
     def previous_rev(self, rev, path=''):
         if path != None:
-            raise NotImplementedError
+            # TODO: fix this: it currently gets the revision in which it was last changed,
+            # not the previuos version...
+            node = self.get_node(path, rev)
+            return node.get_last_change(rev, path)
         try:
             return self.dulwichrepo.revision_history(rev)[1].id
         except KeyError:
@@ -66,7 +81,10 @@ class DulwichRepository(Repository):
         return path and path.strip('/') or '/'
     
     def rev_older_than(self, rev1, rev2):
-        raise NotImplementedError
+        if not rev1 or not rev2:
+            return False
+        commit1 = self.dulwichrepo[rev1]
+        return commit1 in self.dulwichrepo.revision_history(rev2)
         
     def get_path_history(self, path, rev=None, limit=None):
         raise NotImplementedError
@@ -96,6 +114,9 @@ class DulwichRepository(Repository):
     
 class DulwichChangeset(Changeset):
     def __init__(self, repo, rev):
+        if rev not in repo.dulwichrepo:
+            raise NoSuchChangeset(rev)
+        
         self.dulwichrepo = repo.dulwichrepo
         self.rev = rev
         message = self.dulwichrepo[rev].message
@@ -146,7 +167,11 @@ class DulwichNode(Node):
             else:
                 raise TracError("Weird kind of Dulwich object for " + path)
         
-        rev = self._get_last_change(rev, path, self.dulwichobject.id)        
+        rev = self.get_last_change(rev, path)   
+        
+        #required by the Node class to set up ourselves
+        self.created_path = path 
+        self.created_rev = rev   # not really true though. TODO: need to fix this with caching?  
         
         Node.__init__(self, repos, path, rev, kind)
     
@@ -161,7 +186,53 @@ class DulwichNode(Node):
         
         for rubbish, name, sha in self.dulwichobject.entries():
             yield DulwichNode(self.repos, self.path + name, self.rev, sha)
+    
+    def get_history(self, limit=None):
+        # get the backward history for this node
+        # TODO: follow moves/copies
+        commits = self.dulwichrepo.revision_history(self.rev)
+        if self.path == "/":
+            # We are getting the history of the root, which is in every commit
+            if limit:
+                commits = commits[0:limit]
+                print(limit)
+            for is_last, commit in _last_iterable(commits):
+                print commit.id
+                yield (self.path, commit.id, Changeset.EDIT if not is_last else Changeset.ADD)
+        else:
+            history = []
+            elements = self.path.strip('/').split('/')
+            # TODO: this code is also used in _get_last_change. Combine and make
+            # much nicer. It can probably also be reused in DulwichRepository.get_path_history
+            for commit in commits:
+                currentobject = self.dulwichrepo.tree(commit.tree)
+                refsha = self.dulwichobject.id
+                found = False
+                for element in elements:
+                    # iterate through the tree
+                    found = False
+                    for name, mode, sha in currentobject.items():
+                        if name == element:
+                            currentsha = sha
+                            currentobject = self.dulwichrepo[sha]
+                            found = True
+                            break
+                    if not found:
+                        # This means that the current revision of the object is the right one.
+                        break
 
+                # at this point we either found the object with the same name or we didn't
+                if found and currentsha == refsha:
+                    pass # no change
+                elif found:
+                    history.append(commit)
+                    currentsha = refsha
+                else: 
+                    #not found
+                    break
+            for is_last, commit in _last_iterable(history):
+                yield(self.path, commit.id, Changeset.EDIT if not is_last else Changeset.ADD)
+                
     def get_properties(self):
         # no properties defined yet...
         return {}
@@ -177,10 +248,12 @@ class DulwichNode(Node):
             return None
         return self.dulwichobject.raw_length()
         
-    def _get_last_change(self, rev, path, refsha):
+    # Dulwich specific
+    def get_last_change(self, rev, path):
         # Find the last change for the given path since a specified rev
         elements = path.strip('/').split('/')
         commits = self.dulwichrepo.revision_history(rev)
+        refsha = self.dulwichobject.id
         
         for commit in commits:
             currentobject = self.dulwichrepo.tree(commit.tree)
