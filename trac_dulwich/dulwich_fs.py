@@ -3,6 +3,7 @@ from trac.util.datefmt import FixedOffset, to_timestamp, format_datetime
 from trac.versioncontrol.api import \
      Changeset, Node, Repository, IRepositoryConnector, NoSuchChangeset, NoSuchNode
 
+import dulwich.diff_tree
 from dulwich.objects import Blob, Commit, Tree
 from dulwich.repo import Repo
 
@@ -33,9 +34,9 @@ class DulwichConnector(Component):
         #Perhaps one day add or change to support 'git'
         yield ("dulwich", 8)
     
-    def get_repository(self, type, dir, params):
+    def get_repository(self, type, directory, params):
         assert type =="dulwich"
-        return DulwichRepository(dir, params, self.log)
+        return DulwichRepository(directory, params, self.log)
 
 class DulwichRepository(Repository):
     def __init__(self, path, params, log):
@@ -57,13 +58,14 @@ class DulwichRepository(Repository):
         return DulwichNode(self, path, rev)
     
     def get_oldest_rev(self):
-        raise NotImplementedError
+        # Get the oldest rev there is (relative to the current head)
+        return self.dulwichrepo.revision_history(self.dulwichrepo.head())[-1].id
 
     def get_youngest_rev(self):
         return self.dulwichrepo.head()
 
     def previous_rev(self, rev, path=''):
-        if path != None:
+        if len(path) > 0:
             # TODO: fix this: it currently gets the revision in which it was last changed,
             # not the previuos version...
             node = self.get_node(path, rev)
@@ -126,6 +128,44 @@ class DulwichChangeset(Changeset):
         date = datetime.fromtimestamp(float(self.dulwichrepo[rev].author_time), timezone)
         Changeset.__init__(self, repo, rev, message, author, date)
 
+    # Constants for get_changes
+    CHANGE_TYPES = { dulwich.diff_tree.CHANGE_ADD: Changeset.ADD,
+                     dulwich.diff_tree.CHANGE_COPY: Changeset.COPY,
+                     dulwich.diff_tree.CHANGE_RENAME: Changeset.MOVE,
+                     dulwich.diff_tree.CHANGE_MODIFY: Changeset.EDIT,
+                     dulwich.diff_tree.CHANGE_DELETE: Changeset.DELETE }
+                     
+    KIND_TYPES =   { dulwich.objects.Tree: Node.DIRECTORY ,
+                     dulwich.objects.Blob: Node.FILE }
+                     
+    def get_changes(self):
+        """Generator that produces a tuple for every change in the changeset.
+
+        The tuple will contain `(path, kind, change, base_path, base_rev)`,
+        where `change` can be one of Changeset.ADD, Changeset.COPY,
+        Changeset.DELETE, Changeset.EDIT or Changeset.MOVE,
+        and `kind` is one of Node.FILE or Node.DIRECTORY.
+        The `path` is the targeted path for the `change` (which is
+        the ''deleted'' path  for a DELETE change).
+        The `base_path` and `base_rev` are the source path and rev for the
+        action (`None` and `-1` in the case of an ADD change).
+        """
+        # get the changes to the previous revision...
+        # The parent is determined through the Commit.parents list: we always use the first
+        # TODO: fix for the first revision
+        previous_rev = None
+        previous_rev = self.dulwichrepo[self.rev].parents[0]
+        
+        changes = dulwich.diff_tree.tree_changes(self.dulwichrepo.object_store,
+                                                 self.dulwichrepo[previous_rev].tree,
+                                                 self.dulwichrepo[self.rev].tree)
+            
+        for change in changes:
+            yield(change.new.path, self.KIND_TYPES[self.dulwichrepo[change.new.sha].__class__], 
+                  self.CHANGE_TYPES[change.type], 
+                  change.old.path if not change.type == dulwich.diff_tree.CHANGE_ADD else None,
+                  previous_rev if not change.type == dulwich.diff_tree.CHANGE_ADD else None)
+                    
 
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
@@ -157,6 +197,7 @@ class DulwichNode(Node):
                         self.dulwichobject = self.dulwichrepo.get_object(sha)
                         break
                 if not found:
+                    plop
                     raise NoSuchNode(path, rev)
             # finally we should have an object in self.dulwichobject
             if isinstance (self.dulwichobject, Tree):
@@ -195,9 +236,7 @@ class DulwichNode(Node):
             # We are getting the history of the root, which is in every commit
             if limit:
                 commits = commits[0:limit]
-                print(limit)
             for is_last, commit in _last_iterable(commits):
-                print commit.id
                 yield (self.path, commit.id, Changeset.EDIT if not is_last else Changeset.ADD)
         else:
             history = []
