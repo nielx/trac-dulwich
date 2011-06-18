@@ -175,7 +175,7 @@ class DulwichNode(Node):
             self.dulwichobject = self.dulwichrepo.tree(self.dulwichrepo[rev].tree)
             kind = Node.DIRECTORY
         elif sha:
-            self.dulwichobject = self.dulwichrepo.get_object(sha)
+            self.dulwichobject = self.dulwichrepo[sha]
             if isinstance(self.dulwichobject, Tree):
                 kind = Node.DIRECTORY
             else:
