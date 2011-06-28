@@ -172,7 +172,7 @@ class DulwichNode(Node):
         self.dulwichrepo = repos.dulwichrepo
         if sha == None and path == "/":
             # get the tree
-            self.dulwichobject = self.dulwichrepo.tree(self.dulwichrepo[rev].tree)
+            self.dulwichobject = self.dulwichrepo[self.dulwichrepo[rev].tree]
             kind = Node.DIRECTORY
         elif sha:
             self.dulwichobject = self.dulwichrepo[sha]
