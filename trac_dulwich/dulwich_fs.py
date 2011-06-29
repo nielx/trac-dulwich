@@ -151,20 +151,20 @@ class DulwichChangeset(Changeset):
         action (`None` and `-1` in the case of an ADD change).
         """
         # get the changes to the previous revision...
-        # The parent is determined through the Commit.parents list: we always use the first
-        # TODO: fix for the first revision
+        # TODO: check whether the first revision works
+        # TODO: instead of getting the changes like this, we should only get the changes
+        # in the merge
         previous_rev = None
-        previous_rev = self.dulwichrepo[self.rev].parents[0]
         
-        changes = dulwich.diff_tree.tree_changes(self.dulwichrepo.object_store,
-                                                 self.dulwichrepo[previous_rev].tree,
-                                                 self.dulwichrepo[self.rev].tree)
-            
-        for change in changes:
-            yield(change.new.path, self.KIND_TYPES[self.dulwichrepo[change.new.sha].__class__], 
-                  self.CHANGE_TYPES[change.type], 
-                  change.old.path if not change.type == dulwich.diff_tree.CHANGE_ADD else None,
-                  previous_rev if not change.type == dulwich.diff_tree.CHANGE_ADD else None)
+        for parent in self.dulwichrepo[self.rev].parents:        
+            changes = dulwich.diff_tree.tree_changes(self.dulwichrepo.object_store,
+                                                     self.dulwichrepo[parent].tree,
+                                                     self.dulwichrepo[self.rev].tree)
+            for change in changes:
+                yield(change.new.path, self.KIND_TYPES[self.dulwichrepo[change.new.sha].__class__], 
+                      self.CHANGE_TYPES[change.type], 
+                      change.old.path if not change.type == dulwich.diff_tree.CHANGE_ADD else None,
+                      previous_rev if not change.type == dulwich.diff_tree.CHANGE_ADD else None)
                     
 
 class DulwichNode(Node):
