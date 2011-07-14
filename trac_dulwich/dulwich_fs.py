@@ -169,6 +169,7 @@ class DulwichChangeset(Changeset):
 
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
+        print "creating node for " + path
         self.dulwichrepo = repos.dulwichrepo
         if sha == None and path == "/":
             # get the tree
@@ -208,6 +209,7 @@ class DulwichNode(Node):
             else:
                 raise TracError("Weird kind of Dulwich object for " + path)
         
+        print "get_last_change"
         rev = self.get_last_change(rev, path)   
         
         #required by the Node class to set up ourselves
@@ -289,14 +291,34 @@ class DulwichNode(Node):
         
     # Dulwich specific
     def get_last_change(self, rev, path):
-        # Find the last change for the given path since a specified rev
+        """
+        Find the last change for the given path since a specified rev
+        """
+        
+        if path == "/":
+            # requesting top-level tree, which is always at the requested rev
+            return rev
         elements = path.strip('/').split('/')
-        commits = self.dulwichrepo.revision_history(rev)
+
+        # The following algorhithm to walk back the revisions is modeled after
+        # dulwich's revision_history. However, for larger repositories that
+        # algorhithm is too inefficient.
+        pending_commits = [rev]
+        ###current_time = self.dulwichrepo[rev].commit_time
+
         refsha = self.dulwichobject.id
         
-        for commit in commits:
-            currentobject = self.dulwichrepo.tree(commit.tree)
-
+        while pending_commits != []:
+            head = pending_commits.pop(0)
+            try:
+                commit = self.dulwichrepo[head]
+                currentobject = self.dulwichrepo.tree(commit.tree)
+            except:
+                return rev
+            
+            
+            # Check the current commit and see whether the entry was changed
+            # in this commit 
             found = False
             for element in elements:
                 # iterate through the tree
@@ -314,8 +336,13 @@ class DulwichNode(Node):
             # at this point we either found the object with the same name or we didn't
             if found and currentsha == refsha:
                 rev = commit.id
-            elif found:
+            else:
                 return rev
+            
+            # now for the bigger loop: let's fetch the parents
+            for c in commit.parents:
+                pending_commits.append(c)
+            
         
         raise TracError("Unknown error in TracDulwich (_get_last_change)")
         
