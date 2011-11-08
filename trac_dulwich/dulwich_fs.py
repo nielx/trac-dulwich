@@ -246,7 +246,7 @@ class DulwichNode(Node):
             # TODO: this code is also used in _get_last_change. Combine and make
             # much nicer. It can probably also be reused in DulwichRepository.get_path_history
             for commit in commits:
-                currentobject = self.dulwichrepo.tree(commit.tree)
+                currentobject = self.dulwichrepo[commit.tree]
                 refsha = self.dulwichobject.id
                 found = False
                 for element in elements:
