@@ -6,6 +6,7 @@ from trac.versioncontrol.api import \
 import dulwich.diff_tree
 from dulwich.objects import Blob, Commit, Tree
 from dulwich.repo import Repo
+import dulwich.walk
 
 from datetime import datetime
 from StringIO import StringIO
@@ -169,7 +170,7 @@ class DulwichChangeset(Changeset):
 
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
-        print "creating node for " + path
+        print "creating node for %s with rev %s and sha %s" %(path, rev, str(sha))
         self.dulwichrepo = repos.dulwichrepo
         if sha == None and path == "/":
             # get the tree
@@ -181,25 +182,20 @@ class DulwichNode(Node):
                 kind = Node.DIRECTORY
             else:
                 kind = Node.FILE
+            rev = self.get_last_change(rev, path)
         else:
-            # walk the tree
-            elements = path.strip('/').split('/')
-            self.dulwichobject = self.dulwichrepo.tree(self.dulwichrepo[rev].tree)
-            for element in elements:
-                # verify that our current object is a tree
-                if not isinstance(self.dulwichobject, Tree):
-                    raise NoSuchNode(path, rev)
-                
-                # run through the tree
+            # walk the tree, only one step
+            walker = self.dulwichrepo.get_walker(include=[rev], max_entries=1, paths=[path.strip('/')])            
+            for walk in walker:
+                rev = walk.commit.id
                 found = False
-                for rubbish, name, sha in self.dulwichobject.entries():
-                    if name == element:
-                        found = True
-                        self.dulwichobject = self.dulwichrepo.get_object(sha)
-                        break
+                for change in walk.changes():
+                    if change.new.path != path.strip('/'): continue
+                    self.dulwichobject = self.dulwichrepo[change.new.sha]
+                    found = True
                 if not found:
-                    plop
                     raise NoSuchNode(path, rev)
+            
             # finally we should have an object in self.dulwichobject
             if isinstance (self.dulwichobject, Tree):
                 kind = Node.DIRECTORY
@@ -209,12 +205,9 @@ class DulwichNode(Node):
             else:
                 raise TracError("Weird kind of Dulwich object for " + path)
         
-        print "get_last_change"
-        rev = self.get_last_change(rev, path)   
-        
         #required by the Node class to set up ourselves
         self.created_path = path 
-        self.created_rev = rev   # not really true though. TODO: need to fix this with caching?  
+        self.created_rev = rev
         
         Node.__init__(self, repos, path, rev, kind)
     
@@ -233,46 +226,32 @@ class DulwichNode(Node):
     def get_history(self, limit=None):
         # get the backward history for this node
         # TODO: follow moves/copies
-        commits = self.dulwichrepo.revision_history(self.rev)
         if self.path == "/":
-            # We are getting the history of the root, which is in every commit
-            if limit:
-                commits = commits[0:limit]
-            for is_last, commit in _last_iterable(commits):
-                yield (self.path, commit.id, Changeset.EDIT if not is_last else Changeset.ADD)
+            # each node is in the root path
+            walker = self.dulwichrepo.get_walker(include=[self.rev], max_entries=limit)
+            count = 0
+            for is_last, walk in _last_iterable(walker):
+                print(walk.commit.id)
+                yield(self.path, walk.commit.id, Changeset.EDIT if not is_last else Changeset.ADD )
+                count += 1
+                if limit and count == limit:
+                    break
         else:
-            history = []
-            elements = self.path.strip('/').split('/')
+            path = self.path.strip('/')
+            walker = self.dulwichrepo.get_walker(include=[self.rev], max_entries=limit, paths=[path])            
             # TODO: this code is also used in _get_last_change. Combine and make
             # much nicer. It can probably also be reused in DulwichRepository.get_path_history
-            for commit in commits:
-                currentobject = self.dulwichrepo[commit.tree]
-                refsha = self.dulwichobject.id
-                found = False
-                for element in elements:
-                    # iterate through the tree
-                    found = False
-                    for name, mode, sha in currentobject.items():
-                        if name == element:
-                            currentsha = sha
-                            currentobject = self.dulwichrepo[sha]
-                            found = True
-                            break
-                    if not found:
-                        # This means that the current revision of the object is the right one.
-                        break
-
-                # at this point we either found the object with the same name or we didn't
-                if found and currentsha == refsha:
-                    pass # no change
-                elif found:
-                    history.append(commit)
-                    currentsha = refsha
-                else: 
-                    #not found
-                    break
-            for is_last, commit in _last_iterable(history):
-                yield(self.path, commit.id, Changeset.EDIT if not is_last else Changeset.ADD)
+            operation = Changeset.EDIT
+            for walk in walker:
+                for change in walk.changes():
+                    print change
+                    if change.new.path == path:
+                        if change.type == "add":
+                            operation = Changeset.ADD
+                
+                yield(self.path, walk.commit.id, operation)
+                if operation == Changeset.ADD: break
+                
                 
     def get_properties(self):
         # no properties defined yet...
@@ -298,51 +277,9 @@ class DulwichNode(Node):
         if path == "/":
             # requesting top-level tree, which is always at the requested rev
             return rev
-        elements = path.strip('/').split('/')
-
-        # The following algorhithm to walk back the revisions is modeled after
-        # dulwich's revision_history. However, for larger repositories that
-        # algorhithm is too inefficient.
-        pending_commits = [rev]
-        ###current_time = self.dulwichrepo[rev].commit_time
-
-        refsha = self.dulwichobject.id
         
-        while pending_commits != []:
-            head = pending_commits.pop(0)
-            try:
-                commit = self.dulwichrepo[head]
-                currentobject = self.dulwichrepo.tree(commit.tree)
-            except:
-                return rev
-            
-            
-            # Check the current commit and see whether the entry was changed
-            # in this commit 
-            found = False
-            for element in elements:
-                # iterate through the tree
-                found = False
-                for name, mode, sha in currentobject.items():
-                    if name == element:
-                        currentsha = sha
-                        currentobject = self.dulwichrepo[sha]
-                        found = True
-                        break
-                if not found:
-                    # This means that the current revision of the object is the right one.
-                    return rev
-                    
-            # at this point we either found the object with the same name or we didn't
-            if found and currentsha == refsha:
-                rev = commit.id
-            else:
-                return rev
-            
-            # now for the bigger loop: let's fetch the parents
-            for c in commit.parents:
-                pending_commits.append(c)
-            
-        
+        walker = self.dulwichrepo.get_walker(include=[rev], max_entries=1, paths=[path.strip('/')])            
+        for walk in walker:
+            return walk.commit.id
         raise TracError("Unknown error in TracDulwich (_get_last_change)")
         
