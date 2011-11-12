@@ -122,7 +122,7 @@ class DulwichChangeset(Changeset):
         
         self.dulwichrepo = repo.dulwichrepo
         self.rev = rev
-        message = self.dulwichrepo[rev].message
+        message = self.dulwichrepo[rev].message.decode('utf-8')
         author =  self.dulwichrepo[rev].author
         timezonestring = self.dulwichrepo[rev].author_timezone
         timezone = FixedOffset(int(timezonestring)/60, timezonestring)
