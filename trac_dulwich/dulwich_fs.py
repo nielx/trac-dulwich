@@ -60,8 +60,13 @@ class DulwichRepository(Repository):
     
     def get_oldest_rev(self):
         # Get the oldest rev there is (relative to the current head)
-        return self.dulwichrepo.revision_history(self.dulwichrepo.head())[-1].id
-
+        # This should absolutely be cached...
+        walker = self.dulwichrepo.get_walker()
+        rev = None
+        for walk in walker:
+            rev = walk.commit.id
+        return rev
+    
     def get_youngest_rev(self):
         return self.dulwichrepo.head()
 
@@ -72,7 +77,12 @@ class DulwichRepository(Repository):
             node = self.get_node(path, rev)
             return node.get_last_change(rev, path)
         try:
-            return self.dulwichrepo.revision_history(rev)[1].id
+            walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
+            for walk in walker:
+                if rev == walk.commit.id:
+                    continue
+                return walk.commit.id
+            return None
         except KeyError:
             return None
 
