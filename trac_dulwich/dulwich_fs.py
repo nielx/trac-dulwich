@@ -155,7 +155,7 @@ class DulwichChangeset(Changeset):
         # TODO: check whether the first revision works
         # TODO: instead of getting the changes like this, we should only get the changes
         # in the merge
-        previous_rev = None
+        previous_rev = self.repos.previous_rev(self.rev)
         
         for parent in self.dulwichrepo[self.rev].parents:        
             changes = dulwich.diff_tree.tree_changes(self.dulwichrepo.object_store,
