@@ -184,18 +184,13 @@ class DulwichNode(Node):
                 kind = Node.FILE
             rev = self.get_last_change(rev, path)
         else:
-            # walk the tree, only one step
-            walker = self.dulwichrepo.get_walker(include=[rev], max_entries=1, paths=[path.strip('/')])            
-            for walk in walker:
-                rev = walk.commit.id
-                found = False
-                for change in walk.changes():
-                    if change.new.path != path.strip('/'): continue
-                    self.dulwichobject = self.dulwichrepo[change.new.sha]
-                    found = True
-                if not found:
-                    raise NoSuchNode(path, rev)
-            
+            root_tree = repos.dulwichrepo[repos.dulwichrepo[rev].tree]
+            try:
+                mode, sha = root_tree.lookup_path(repos.dulwichrepo.get_object, path.strip('/'))
+                self.dulwichobject = repos.dulwichrepo[sha]
+            except KeyError:
+                raise NoSuchNode(path, rev)
+            rev = self.get_last_change(rev, path.strip('/'))
             # finally we should have an object in self.dulwichobject
             if isinstance (self.dulwichobject, Tree):
                 kind = Node.DIRECTORY
@@ -244,7 +239,6 @@ class DulwichNode(Node):
             operation = Changeset.EDIT
             for walk in walker:
                 for change in walk.changes():
-                    print change
                     if change.new.path == path:
                         if change.type == "add":
                             operation = Changeset.ADD
