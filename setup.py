@@ -13,5 +13,9 @@ setup(name='TracDulwich',
       license="MIT",
       long_description="",
       packages=['trac_dulwich'],
-      entry_points = {'trac.plugins': 'dulwich = trac_dulwich.dulwich_fs'},
+      entry_points = {'trac.plugins': 
+                                ['dulwich = trac_dulwich.dulwich_fs',
+                                 'dulwich.cache = trac_dulwich.cache',
+                                 'dulwich.api = trac_dulwich.api',
+                                 ]},
 )

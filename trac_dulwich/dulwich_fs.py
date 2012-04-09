@@ -1,4 +1,5 @@
 from trac.core import *
+from trac.config import BoolOption, Option
 from trac.util.datefmt import FixedOffset, to_timestamp, format_datetime
 from trac.versioncontrol.api import \
      Changeset, Node, Repository, IRepositoryConnector, NoSuchChangeset, NoSuchNode
@@ -7,6 +8,8 @@ import dulwich.diff_tree
 from dulwich.objects import Blob, Commit, Tree
 from dulwich.repo import Repo
 import dulwich.walk
+
+from cache import DulwichCache, DulwichNoCache
 
 from datetime import datetime
 from StringIO import StringIO
@@ -25,6 +28,9 @@ def _last_iterable(iterable):
 
 class DulwichConnector(Component):
     implements(IRepositoryConnector)
+
+    _enable_cache = BoolOption('dulwich', 'enable_cache', 'false',
+                               'enable caching of the repositories')
     
     def __init__(self):
         self.log.info("Dulwich plugin loaded")
@@ -37,14 +43,18 @@ class DulwichConnector(Component):
     
     def get_repository(self, type, directory, params):
         assert type =="dulwich"
-        return DulwichRepository(directory, params, self.log)
+        return DulwichRepository(directory, params, self.log, self._enable_cache, self.env)
 
 class DulwichRepository(Repository):
-    def __init__(self, path, params, log):
+    def __init__(self, path, params, log, cache, env):
         self.params = params
         self.path = path
         self.logger = log
         self.dulwichrepo = Repo(path)
+        if cache:
+            self.cache = DulwichCache(self, log, params['id'], env)
+        else:
+            self.cache = None
         Repository.__init__(self, "dulwich:"+path, self.params, log)
     
     def close(self):
@@ -181,6 +191,7 @@ class DulwichChangeset(Changeset):
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
         print "creating node for %s with rev %s and sha %s" %(path, rev, str(sha))
+        self.repos = repos
         self.dulwichrepo = repos.dulwichrepo
         if sha == None and path == "/":
             # get the tree
@@ -277,6 +288,13 @@ class DulwichNode(Node):
         """
         Find the last change for the given path since a specified rev
         """
+        
+        # Try the cache
+        if self.repos.cache:
+            cache_rev = self.repos.cache.get_commit_sha_for_object(self.dulwichobject.id)
+            if cache_rev is not None:
+                return cache_rev
+            self.repos.log.info("Cache miss for object %s" % (self.dulwichobject.id,))
         
         if path == "/":
             # requesting top-level tree, which is always at the requested rev
