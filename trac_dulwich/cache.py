@@ -105,18 +105,6 @@ class DulwichCacheAdmin(Component):
 # Classes used by repositories
 #####
 
-class DulwichNoCache(object):
-    def __init__(self, repos, log, repos_id, env):
-        self.repos = repos
-        self.logger = log
-        self.env = env
-        
-    def get_commit_sha_for_object(self, sha):
-        return None
-    
-    def exists(self, sha):
-        pass
-
 class DulwichCache(object):
     def __init__(self, repos, log, repos_id, env):
         self.repos = repos
@@ -149,7 +137,7 @@ class DulwichCache(object):
         if item:
             return item[0]
         else:
-            self.logger.debug("Object %s not in cache!" % (sha))
+            self.logger.info("Object %s not in cache!" % (sha))
             return None
     
     def commit_history(self, sha):

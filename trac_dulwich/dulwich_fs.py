@@ -9,7 +9,7 @@ from dulwich.objects import Blob, Commit, Tree
 from dulwich.repo import Repo
 import dulwich.walk
 
-from cache import DulwichCache, DulwichNoCache
+from cache import DulwichCache
 
 from datetime import datetime
 from StringIO import StringIO
@@ -292,9 +292,8 @@ class DulwichNode(Node):
         # Try the cache
         if self.repos.cache:
             cache_rev = self.repos.cache.get_commit_sha_for_object(self.dulwichobject.id)
-            if cache_rev is not None:
-                return cache_rev
-            self.repos.log.info("Cache miss for object %s" % (self.dulwichobject.id,))
+            #if cache_rev is not None:
+            #    return cache_rev
         
         if path == "/":
             # requesting top-level tree, which is always at the requested rev
