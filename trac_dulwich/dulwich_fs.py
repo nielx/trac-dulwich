@@ -72,10 +72,8 @@ class DulwichRepository(Repository):
 
     def previous_rev(self, rev, path=''):
         if len(path) > 0:
-            # TODO: fix this: it currently gets the revision in which it was last changed,
-            # not the previuos version...
             node = self.get_node(path, rev)
-            return node.get_last_change(rev, path)
+            return node.get_previous_change()
         try:
             walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
             for walk in walker:
@@ -286,4 +284,14 @@ class DulwichNode(Node):
         for walk in walker:
             return walk.commit.id
         raise TracError("Unknown error in TracDulwich (_get_last_change)")
+    
+    def get_previous_change(self):
+        """
+        Find the previous revision of this node
+        """
+        walker = self.dulwichrepo.get_walker(include=[self.created_rev], max_entries=2, paths=[self.created_path])
+        rev = None
+        for walk in walker:
+            rev = walk.commit.id
+        return rev
         
