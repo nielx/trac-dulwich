@@ -50,6 +50,33 @@ class DulwichRepository(Repository):
     def close(self):
         self.dulwichrepo = None
     
+    def get_quickjump_entries(self, rev):
+        """Retrieve known branches, as (name, id) pairs.
+
+        For now, ignores `rev` and always takes the last revision.
+        """
+        refs = self.dulwichrepo.get_refs()
+        # sort the refs
+        branches = []
+        tags = []
+        remotes = []
+        
+        for key in refs.keys():
+            if key.startswith("refs/heads/"):
+                branches.append(key)
+            elif key.startswith("refs/tags/"):
+                tags.append(key)
+            elif key.startswith("refs/remotes/"):
+                remotes.append(key)
+
+        for n in sorted(branches):
+            yield 'branches', n[11:], '/', refs[n]
+        for n in sorted(tags):
+            yield 'tags', n[10:], '/', refs[n]
+        for n in sorted(remotes):
+            yield 'remotes', n[13:], '/', refs[n]
+        
+    
     def get_changeset(self, rev):
         return DulwichChangeset(self, rev)    
 
