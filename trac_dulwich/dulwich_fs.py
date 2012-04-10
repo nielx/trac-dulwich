@@ -101,27 +101,23 @@ class DulwichRepository(Repository):
         if len(path) > 0:
             node = self.get_node(path, rev)
             return node.get_previous_change()
-        try:
-            walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
-            for walk in walker:
-                if rev == walk.commit.id:
-                    continue
-                return walk.commit.id
-            return None
-        except KeyError:
-            return None
+
+        walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
+        for walk in walker:
+            if rev == walk.commit.id:
+                continue
+            return walk.commit.id
+        return None
 
     def next_rev(self, rev, path=""):
         if len(path) > 0:
             node = self.get_node(path, rev)
             return node.get_next_change()
-        try:
-            walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()], exclude=[rev], reverse=True)
-            for walk in walker:
-                return walk.commit.id
-            return None
-        except KeyError:
-            return None
+
+        walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()], exclude=[rev], reverse=True)
+        for walk in walker:
+            return walk.commit.id
+        return None
            
     def normalize_path(self, path):
         return path and path.strip('/') or '/'
