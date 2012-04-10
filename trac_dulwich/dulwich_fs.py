@@ -85,8 +85,16 @@ class DulwichRepository(Repository):
             return None
 
     def next_rev(self, rev, path=""):
-        # TODO: implement (needs database though)
-        return None
+        if len(path) > 0:
+            node = self.get_node(path, rev)
+            return node.get_next_change()
+        try:
+            walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()], exclude=[rev], reverse=True)
+            for walk in walker:
+                return walk.commit.id
+            return None
+        except KeyError:
+            return None
            
     def normalize_path(self, path):
         return path and path.strip('/') or '/'
@@ -294,4 +302,15 @@ class DulwichNode(Node):
         for walk in walker:
             rev = walk.commit.id
         return rev
-        
+
+    def get_next_change(self):
+        """
+        Find the next revision of this node
+        """
+        walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()], exclude=[self.created_rev], 
+                                             max_entries=2, paths=[self.created_path], reverse=True)
+        rev = None
+        for walk in walker:
+            rev = walk.commit.id
+        return rev
+    
