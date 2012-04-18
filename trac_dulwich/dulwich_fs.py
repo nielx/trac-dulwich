@@ -1,8 +1,14 @@
+#
+# Copyright 2010-2012 Niels Sascha Reedijk, niels.reedijk@gmail.com
+# All rights reserved. Distributed under the terms of the MIT License.
+#
+
 from trac.core import *
 from trac.config import BoolOption, Option
 from trac.util.datefmt import FixedOffset, to_timestamp, format_datetime
-from trac.versioncontrol.api import \
-     Changeset, Node, Repository, IRepositoryConnector, NoSuchChangeset, NoSuchNode
+from trac.versioncontrol.api import Changeset, Node, Repository, \
+                                    IRepositoryConnector, NoSuchChangeset, \
+                                    NoSuchNode
 
 import dulwich.diff_tree
 from dulwich.objects import Blob, Commit, Tree
@@ -60,6 +66,33 @@ class DulwichRepository(Repository):
     def close(self):
         self.dulwichrepo = None
     
+    def get_quickjump_entries(self, rev):
+        """Retrieve known branches, as (name, id) pairs.
+
+        For now, ignores `rev` and always takes the last revision.
+        """
+        refs = self.dulwichrepo.get_refs()
+        # sort the refs
+        branches = []
+        tags = []
+        remotes = []
+        
+        for key in refs.keys():
+            if key.startswith("refs/heads/"):
+                branches.append(key)
+            elif key.startswith("refs/tags/"):
+                tags.append(key)
+            elif key.startswith("refs/remotes/"):
+                remotes.append(key)
+
+        for n in sorted(branches):
+            yield 'branches', n[11:], '/', refs[n]
+        for n in sorted(tags):
+            yield 'tags', n[10:], '/', refs[n]
+        for n in sorted(remotes):
+            yield 'remotes', n[13:], '/', refs[n]
+        
+    
     def get_changeset(self, rev):
         return DulwichChangeset(self, rev)    
 
@@ -82,22 +115,25 @@ class DulwichRepository(Repository):
 
     def previous_rev(self, rev, path=''):
         if len(path) > 0:
-            # TODO: fix this: it currently gets the revision in which it was last changed,
-            # not the previuos version...
             node = self.get_node(path, rev)
-            return node.get_last_change(rev, path)
-        try:
-            walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
-            for walk in walker:
-                if rev == walk.commit.id:
-                    continue
-                return walk.commit.id
-            return None
-        except KeyError:
-            return None
+            return node.get_previous_change()
+
+        walker = self.dulwichrepo.get_walker(include=[rev], max_entries=2)
+        for walk in walker:
+            if rev == walk.commit.id:
+                continue
+            return walk.commit.id
+        return None
 
     def next_rev(self, rev, path=""):
-        # TODO: implement (needs database though)
+        if len(path) > 0:
+            node = self.get_node(path, rev)
+            return node.get_next_change()
+
+        walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()],
+                                             exclude=[rev], reverse=True)
+        for walk in walker:
+            return walk.commit.id
         return None
            
     def normalize_path(self, path):
@@ -122,9 +158,9 @@ class DulwichRepository(Repository):
 
     
     def short_rev(self, rev):
-        #NOTE: This should actually verify whether the names clash. At the other hand
-        #      this is never used programmatically, and users running into problems
-        #      should be skilled enought to work it out themselves.
+        #NOTE: This should actually verify whether the names clash. At the 
+        # other hand this is never used programmatically, and users running 
+        # into problems should be skilled enought to work it out themselves.
         return rev[0:7]
     
     def display_rev(self, rev):
@@ -146,7 +182,8 @@ class DulwichChangeset(Changeset):
         author =  self.dulwichrepo[rev].author
         timezonestring = self.dulwichrepo[rev].author_timezone
         timezone = FixedOffset(int(timezonestring)/60, timezonestring)
-        date = datetime.fromtimestamp(float(self.dulwichrepo[rev].author_time), timezone)
+        date = datetime.fromtimestamp(float(self.dulwichrepo[rev].author_time),
+                                      timezone)
         Changeset.__init__(self, repo, rev, message, author, date)
 
     # Constants for get_changes
@@ -173,14 +210,15 @@ class DulwichChangeset(Changeset):
         """
         # get the changes to the previous revision...
         # TODO: check whether the first revision works
-        # TODO: instead of getting the changes like this, we should only get the changes
-        # in the merge
+        # TODO: instead of getting the changes like this, we should only get 
+        # the changes in the merge
         previous_rev = self.repos.previous_rev(self.rev)
         
         for parent in self.dulwichrepo[self.rev].parents:        
-            changes = dulwich.diff_tree.tree_changes(self.dulwichrepo.object_store,
-                                                     self.dulwichrepo[parent].tree,
-                                                     self.dulwichrepo[self.rev].tree)
+            changes = dulwich.diff_tree.tree_changes(
+                                            self.dulwichrepo.object_store,
+                                            self.dulwichrepo[parent].tree,
+                                            self.dulwichrepo[self.rev].tree)
             for change in changes:
                 yield(change.new.path, self.KIND_TYPES[self.dulwichrepo[change.new.sha].__class__], 
                       self.CHANGE_TYPES[change.type], 
@@ -190,9 +228,11 @@ class DulwichChangeset(Changeset):
 
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
-        print "creating node for %s with rev %s and sha %s" %(path, rev, str(sha))
+        print ("creating node for %s with rev %s and sha %s" % 
+              (path, rev, str(sha)))
         self.repos = repos
         self.dulwichrepo = repos.dulwichrepo
+        
         if sha == None and path == "/":
             # get the tree
             self.dulwichobject = self.dulwichrepo[self.dulwichrepo[rev].tree]
@@ -207,7 +247,8 @@ class DulwichNode(Node):
         else:
             root_tree = repos.dulwichrepo[repos.dulwichrepo[rev].tree]
             try:
-                mode, sha = root_tree.lookup_path(repos.dulwichrepo.get_object, path.strip('/'))
+                mode, sha = root_tree.lookup_path(repos.dulwichrepo.get_object, 
+                                                  path.strip('/'))
                 self.dulwichobject = repos.dulwichrepo[sha]
             except KeyError:
                 raise NoSuchNode(path, rev)
@@ -244,19 +285,23 @@ class DulwichNode(Node):
         # TODO: follow moves/copies
         if self.path == "/":
             # each node is in the root path
-            walker = self.dulwichrepo.get_walker(include=[self.rev], max_entries=limit)
+            walker = self.dulwichrepo.get_walker(include=[self.rev], 
+                                                 max_entries=limit)
             count = 0
             for is_last, walk in _last_iterable(walker):
                 print(walk.commit.id)
-                yield(self.path, walk.commit.id, Changeset.EDIT if not is_last else Changeset.ADD )
+                yield(self.path, walk.commit.id, 
+                      Changeset.EDIT if not is_last else Changeset.ADD )
                 count += 1
                 if limit and count == limit:
                     break
         else:
             path = self.path.strip('/')
-            walker = self.dulwichrepo.get_walker(include=[self.rev], max_entries=limit, paths=[path])            
-            # TODO: this code is also used in _get_last_change. Combine and make
-            # much nicer. It can probably also be reused in DulwichRepository.get_path_history
+            walker = self.dulwichrepo.get_walker(include=[self.rev], 
+                max_entries=limit, paths=[path])
+            # TODO: this code is also used in _get_last_change. Combine and 
+            # make much nicer. It can probably also be reused in 
+            # DulwichRepository.get_path_history
             operation = Changeset.EDIT
             for walk in walker:
                 for change in walk.changes():
@@ -299,8 +344,35 @@ class DulwichNode(Node):
             # requesting top-level tree, which is always at the requested rev
             return rev
         
-        walker = self.dulwichrepo.get_walker(include=[rev], max_entries=1, paths=[path.strip('/')])            
+        walker = self.dulwichrepo.get_walker(include=[rev], max_entries=1, 
+                                             paths=[path.strip('/')]) 
         for walk in walker:
             return walk.commit.id
         raise TracError("Unknown error in TracDulwich (_get_last_change)")
-        
+    
+    def get_previous_change(self):
+        """
+        Find the previous revision of this node
+        """
+        walker = self.dulwichrepo.get_walker(include=[self.created_rev], 
+                                             max_entries=2, 
+                                             paths=[self.created_path])
+        rev = None
+        for walk in walker:
+            rev = walk.commit.id
+        return rev
+
+    def get_next_change(self):
+        """
+        Find the next revision of this node
+        """
+        walker = self.dulwichrepo.get_walker(include=[self.dulwichrepo.head()],
+                                             exclude=[self.created_rev], 
+                                             max_entries=2, 
+                                             paths=[self.created_path], 
+                                             reverse=True)
+        rev = None
+        for walk in walker:
+            rev = walk.commit.id
+        return rev
+    
