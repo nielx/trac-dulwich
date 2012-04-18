@@ -292,8 +292,8 @@ class DulwichNode(Node):
         # Try the cache
         if self.repos.cache:
             cache_rev = self.repos.cache.get_commit_sha_for_object(self.dulwichobject.id)
-            #if cache_rev is not None:
-            #    return cache_rev
+            if cache_rev is not None:
+                return cache_rev
         
         if path == "/":
             # requesting top-level tree, which is always at the requested rev

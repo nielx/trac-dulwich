@@ -30,7 +30,7 @@ class DulwichCacheAdmin(Component):
 
         db = self.env.get_db_cnx()
         cursor = db.cursor()
-         
+
         # TODO: get the current heads so that the walker can be instructed where to
         # stop
          
@@ -38,6 +38,7 @@ class DulwichCacheAdmin(Component):
         for walk in walker:
             for change in walk.changes():
                 parents = []
+                print change
                 if isinstance(change, list):
                     # The change is a list when the file is a merge from two or more previous changesets
                     for c in change:
@@ -52,10 +53,18 @@ class DulwichCacheAdmin(Component):
                     # modified
                     continue
 
-                try:
-                    cursor.execute("UPDATE dulwich_objects SET commit_id WHERE repos=%s AND sha=%s", (repos.id, change.new.sha))
-                    db.commit()
-                except:
+                # check if this object is already in the database
+                cursor.execute("SELECT commit_id FROM dulwich_objects WHERE repos=%s AND sha=%s", (repos.id, change.new.sha))
+                item = cursor.fetchone()
+                
+                if item:
+                    try:
+                        cursor.execute("UPDATE dulwich_objects SET commit_id=%s WHERE repos=%s AND sha=%s", (walk.commit.id, repos.id, change.new.sha))
+                    except:
+                        # Todo: this is probably all right and has to do with merge changesets, but need to
+                        # verify if it is absolutely the way it should be
+                        pass
+                else:
                     # in case of add, or a modify of a file that we did not yet encounter (because
                     #   we run in reverse order)
                     print("creating new head for file %s with sha %s" % (change.new.path, change.new.sha))
@@ -71,6 +80,7 @@ class DulwichCacheAdmin(Component):
                             # actually the commit_id for the old changeset is wrong, but it will be updated in the following runs of the loop
                             cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, parent.sha, parent.path.decode("utf-8"), parent.mode, walk.commit.id))
+                            print("Adding parent %s with sha %s" % (parent.path, parent.sha))
                         except: 
                             # if this fails, it means that the parent object is already in the database
                             # very likely because of merges. So it is safe to ignore. 
@@ -90,8 +100,12 @@ class DulwichCacheAdmin(Component):
                     # register each tree into the object store
                     current_path += part
                     mode, sha = tree.lookup_path(repos.dulwichrepo.get_object, current_path)
-                    cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
+                    try:
+                        cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                  (repos.id, sha, current_path.decode("utf-8"), mode, walk.commit.id))
+                    except:
+                        # this tree was already registered with a previous path change
+                        pass
                     current_path += '/'
 
             db.commit() # commit after each walk         
@@ -135,6 +149,7 @@ class DulwichCache(object):
         cursor.execute("SELECT commit_id FROM dulwich_objects WHERE repos=%s AND sha=%s", (self.repos.id, sha))
         item = cursor.fetchone()
         if item:
+            self.logger.debug("Fetching object %s from cache!" % (sha))
             return item[0]
         else:
             self.logger.info("Object %s not in cache!" % (sha))
