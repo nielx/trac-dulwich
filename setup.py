@@ -1,5 +1,10 @@
 #!/usr/bin/env python
 
+#
+# Copyright 2010-2012 Niels Sascha Reedijk, niels.reedijk@gmail.com
+# All rights reserved. Distributed under the terms of the MIT License.
+#
+
 from setuptools import setup
 
 setup(name='TracDulwich',
