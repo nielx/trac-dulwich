@@ -40,14 +40,23 @@ class DulwichCacheAdmin(Component):
         
         for head in set(row[0] for row in cursor):
             exclude_list.append(head)
+        
+        # Determine all the heads for this repository
+        heads = []
+        refs = repos.dulwichrepo.get_refs()
+        for key in refs.keys():
+            if key.startswith("refs/heads/"):
+                heads.append(refs[key])
          
-        walker = repos.dulwichrepo.get_walker(exclude=exclude_list)
+        walker = repos.dulwichrepo.get_walker(include=heads, 
+                                              exclude=exclude_list)
         for walk in walker:
             for change in walk.changes():
                 parents = []
                 print change
                 if isinstance(change, list):
-                    # The change is a list when the file is a merge from two or more previous changesets
+                    # The change is a list when the file is a merge from two 
+                    # or more previous changesets
                     for c in change:
                         if c.old not in parents:
                             parents.append(c.old)
@@ -56,8 +65,8 @@ class DulwichCacheAdmin(Component):
                     parents.append(change.old)
                 
                 if change.type == "delete":
-                    # we don't actually register deletes, they are registered when they are last
-                    # modified
+                    # we don't actually register deletes, they are registered 
+                    # when they are last modified
                     continue
 
                 # check if this object is already in the database
@@ -117,11 +126,13 @@ class DulwichCacheAdmin(Component):
 
             db.commit() # commit after each walk         
 
-        # Store the heads - TODO: store all different heads
-        try:
-            cursor.execute("INSERT INTO dulwich_heads (repos, head) VALUES (%s, %s)", (repos.id, repos.dulwichrepo.head()))
-            db.commit()
-        except: pass # the head is already in the database
+        # Store the heads
+        cursor.execute("DELETE FROM dulwich_heads WHERE repos=%s", (repos.id,))
+        for head in heads:
+            cursor.execute("""INSERT INTO dulwich_heads (repos, head)  
+                           VALUES (%s, %s)
+                           """, (repos.id, head))
+        db.commit()
 
 
 #####
