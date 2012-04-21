@@ -75,6 +75,7 @@ class DulwichCacheAdmin(Component):
                 if item:
                     try:
                         cursor.execute("UPDATE dulwich_objects SET commit_id=%s WHERE repos=%s AND sha=%s", (walk.commit.id, repos.id, change.new.sha))
+                        db.commit()
                     except:
                         # Todo: this is probably all right and has to do with merge changesets, but need to
                         # verify if it is absolutely the way it should be
@@ -84,6 +85,7 @@ class DulwichCacheAdmin(Component):
                     #   we run in reverse order)
                     cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                 (repos.id, change.new.sha, change.new.path.decode("utf-8"), change.new.mode, walk.commit.id))
+                    db.commit()
                     
                 if change.type == "add":
                     # above in fetching o we already update the commit_id, so no action here
@@ -94,6 +96,7 @@ class DulwichCacheAdmin(Component):
                             # actually the commit_id for the old changeset is wrong, but it will be updated in the following runs of the loop
                             cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, parent.sha, parent.path.decode("utf-8"), parent.mode, walk.commit.id))
+                            db.commit()
                         except: 
                             # if this fails, it means that the parent object is already in the database
                             # very likely because of merges. So it is safe to ignore. 
@@ -101,6 +104,7 @@ class DulwichCacheAdmin(Component):
                         
                         cursor.execute("INSERT INTO dulwich_object_parents (repos, sha, parent, path, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, change.new.sha, parent.sha, change.new.path.decode("utf-8"), walk.commit.id))
+                        db.commit()
 
                 # handle the trees
                 path = os.path.split(change.new.path)[0]
@@ -115,13 +119,12 @@ class DulwichCacheAdmin(Component):
                     try:
                         cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                  (repos.id, sha, current_path.decode("utf-8"), mode, walk.commit.id))
+                        db.commit()
                     except:
                         # this tree was already registered with a previous path change
                         pass
                     current_path += '/'
                 
-                db.commit() # commit after each change
-
         # Store the heads
         cursor.execute("DELETE FROM dulwich_heads WHERE repos=%s", (repos.id,))
         for head in heads:
