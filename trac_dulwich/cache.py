@@ -30,11 +30,18 @@ class DulwichCacheAdmin(Component):
 
         db = self.env.get_db_cnx()
         cursor = db.cursor()
-
-        # TODO: get the current heads so that the walker can be instructed where to
-        # stop
+        
+        # The database stores the heads up to what it has currently cached. Use
+        # these heads to determine where to stop to only cache the new
+        # revisions
+        exclude_list = []
+        cursor.execute("SELECT head FROM dulwich_heads WHERE repos=%s", 
+                       (repos.id,))
+        
+        for head in set(row[0] for row in cursor):
+            exclude_list.append(head)
          
-        walker = repos.dulwichrepo.get_walker()
+        walker = repos.dulwichrepo.get_walker(exclude=exclude_list)
         for walk in walker:
             for change in walk.changes():
                 parents = []
@@ -110,9 +117,11 @@ class DulwichCacheAdmin(Component):
 
             db.commit() # commit after each walk         
 
-        # Store the heads
-        cursor.execute("INSERT INTO dulwich_heads (repos, head) VALUES (%s, %s)", (repos.id, repos.dulwichrepo.head()))
-        db.commit()
+        # Store the heads - TODO: store all different heads
+        try:
+            cursor.execute("INSERT INTO dulwich_heads (repos, head) VALUES (%s, %s)", (repos.id, repos.dulwichrepo.head()))
+            db.commit()
+        except: pass # the head is already in the database
 
 
 #####
