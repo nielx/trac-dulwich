@@ -1,11 +1,13 @@
 from trac.admin import AdminCommandError, IAdminCommandProvider
 from trac.core import *
+from trac.util.text import printout
 from trac.versioncontrol import RepositoryManager
 
 import dulwich.repo
 import dulwich.objects
 
 import os.path
+import sys
 
 
 ######
@@ -28,6 +30,8 @@ class DulwichCacheAdmin(Component):
         if repos is None:
             raise TracError("Repository '%(repo)s' not found", repo=reponame)
 
+        printout("Synchronizing repository data for repository %s", reponame)
+
         db = self.env.get_db_cnx()
         cursor = db.cursor()
         
@@ -47,7 +51,10 @@ class DulwichCacheAdmin(Component):
         for key in refs.keys():
             if key.startswith("refs/heads/"):
                 heads.append(refs[key])
-         
+        
+        commit_count = 0
+        object_count = 0
+        
         walker = repos.dulwichrepo.get_walker(include=heads, 
                                               exclude=exclude_list)
         for walk in walker:
@@ -86,6 +93,7 @@ class DulwichCacheAdmin(Component):
                     cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                 (repos.id, change.new.sha, change.new.path.decode("utf-8"), change.new.mode, walk.commit.id))
                     db.commit()
+                    object_count += 1
                     
                 if change.type == "add":
                     # above in fetching o we already update the commit_id, so no action here
@@ -97,6 +105,7 @@ class DulwichCacheAdmin(Component):
                             cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, parent.sha, parent.path.decode("utf-8"), parent.mode, walk.commit.id))
                             db.commit()
+                            object_count += 1
                         except: 
                             # if this fails, it means that the parent object is already in the database
                             # very likely because of merges. So it is safe to ignore. 
@@ -120,10 +129,17 @@ class DulwichCacheAdmin(Component):
                         cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                  (repos.id, sha, current_path.decode("utf-8"), mode, walk.commit.id))
                         db.commit()
+                        object_count += 1
                     except:
                         # this tree was already registered with a previous path change
                         pass
                     current_path += '/'
+            # prepare for next run
+            commit_count += 1
+            if commit_count % 5 == 0:
+                sys.stdout.write('Synchronized %i commits with %i objects\r' % 
+                                 (commit_count, object_count))
+                sys.stdout.flush()
                 
         # Store the heads
         cursor.execute("DELETE FROM dulwich_heads WHERE repos=%s", (repos.id,))
@@ -132,6 +148,9 @@ class DulwichCacheAdmin(Component):
                            VALUES (%s, %s)
                            """, (repos.id, head))
         db.commit()
+        printout('Synchronized %i commits with %i objects' %
+                 (commit_count, object_count))
+        
 
 
 #####
