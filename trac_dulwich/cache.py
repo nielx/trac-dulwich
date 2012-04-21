@@ -104,7 +104,6 @@ class DulwichCacheAdmin(Component):
                         
                         cursor.execute("INSERT INTO dulwich_object_parents (repos, sha, parent, path, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, change.new.sha, parent.sha, change.new.path.decode("utf-8"), walk.commit.id))
-                        db.commit()
 
                 # handle the trees
                 path = os.path.split(change.new.path)[0]
@@ -123,8 +122,8 @@ class DulwichCacheAdmin(Component):
                         # this tree was already registered with a previous path change
                         pass
                     current_path += '/'
-
-            db.commit() # commit after each walk         
+                
+                db.commit() # commit after each change
 
         # Store the heads
         cursor.execute("DELETE FROM dulwich_heads WHERE repos=%s", (repos.id,))
