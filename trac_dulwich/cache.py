@@ -53,7 +53,6 @@ class DulwichCacheAdmin(Component):
         for walk in walker:
             for change in walk.changes():
                 parents = []
-                print change
                 if isinstance(change, list):
                     # The change is a list when the file is a merge from two 
                     # or more previous changesets
@@ -83,7 +82,6 @@ class DulwichCacheAdmin(Component):
                 else:
                     # in case of add, or a modify of a file that we did not yet encounter (because
                     #   we run in reverse order)
-                    print("creating new head for file %s with sha %s" % (change.new.path, change.new.sha))
                     cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                 (repos.id, change.new.sha, change.new.path.decode("utf-8"), change.new.mode, walk.commit.id))
                     
@@ -96,7 +94,6 @@ class DulwichCacheAdmin(Component):
                             # actually the commit_id for the old changeset is wrong, but it will be updated in the following runs of the loop
                             cursor.execute("INSERT INTO dulwich_objects (repos, sha, path, mode, commit_id) VALUES (%s, %s, %s, %s, %s)",
                                      (repos.id, parent.sha, parent.path.decode("utf-8"), parent.mode, walk.commit.id))
-                            print("Adding parent %s with sha %s" % (parent.path, parent.sha))
                         except: 
                             # if this fails, it means that the parent object is already in the database
                             # very likely because of merges. So it is safe to ignore. 
