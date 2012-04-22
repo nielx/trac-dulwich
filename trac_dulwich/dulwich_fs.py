@@ -218,8 +218,6 @@ class DulwichChangeset(Changeset):
 
 class DulwichNode(Node):
     def __init__(self, repos, path, rev, sha=None):
-        print ("creating node for %s with rev %s and sha %s" % 
-              (path, rev, str(sha)))
         self.dulwichrepo = repos.dulwichrepo
         if sha == None and path == "/":
             # get the tree
