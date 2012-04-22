@@ -30,7 +30,8 @@ class DulwichCacheAdmin(Component):
         if repos is None:
             raise TracError("Repository '%(repo)s' not found", repo=reponame)
 
-        printout("Synchronizing repository data for repository %s", reponame)
+        printout("Synchronizing repository data for repository %s" % 
+            (reponame,))
 
         db = self.env.get_db_cnx()
         cursor = db.cursor()
@@ -111,9 +112,6 @@ class DulwichCacheAdmin(Component):
                             # very likely because of merges. So it is safe to ignore. 
                             pass
                         
-                        cursor.execute("INSERT INTO dulwich_object_parents (repos, sha, parent, path, commit_id) VALUES (%s, %s, %s, %s, %s)",
-                                     (repos.id, change.new.sha, parent.sha, change.new.path.decode("utf-8"), walk.commit.id))
-                        db.commit()
 
                 # handle the trees
                 path = os.path.split(change.new.path)[0]
@@ -184,31 +182,3 @@ class DulwichCache(object):
         else:
             self.logger.info("Object %s not in cache!" % (sha))
             return None
-    
-    def commit_history(self, sha):
-        # return a list of commit ids for a certain sha
-        # TODO: turn into a generator
-        # TODO: do some ordering of changesets when it comes to branched ones
-        
-        raise TracError("NOT IMPLEMENTED!!!")
-
-        if self.repos.id not in self.root:
-            raise TracError("The cache for this repository has not been built yet. Please rebuild using trac-admin or disable caching.")
-        
-        history = []
-        
-        obj = self.root[self.repos.id][sha]
-        
-        object_list = [obj]
-        past_object_list = []
-        
-        while len(object_list) != 0:
-            o = object_list.pop(0)
-            past_object_list.append(o)
-            history.append(o.commit_id)
-            for parent in o.parents:
-                if parent not in past_object_list:
-                    object_list.append(self.root[self.repos.id][parent])
-        
-        return history
-        
