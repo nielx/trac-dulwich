@@ -162,15 +162,7 @@ class DulwichCache(object):
         self.repos = repos
         self.logger = log
         self.env = env
-        
-        # test for validity
-        #db = self.env.get_db_cnx()
-        #cursor = db.cursor()
-        #cursor.execute("SELECT head FROM dulwich_heads WHERE repos=%s", (repos_id,))
-        #if not cursor.fetchone():
-        #    raise TracError("The cache for this repository has not been built yet. Please rebuild using trac-admin or disable caching.")
-        
-        
+                
     def exists(self, sha):
         db = self.env.get_db_cnx()
         cursor = db.cursor()
